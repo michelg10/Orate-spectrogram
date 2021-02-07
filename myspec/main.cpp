@@ -1,4 +1,3 @@
-#include <fftw3.h>
 #include <iostream>
 #include <fstream>
 #include <png.h>
@@ -6,6 +5,7 @@
 #include <filesystem>
 #include <thread>
 #include <unistd.h>
+#include <Accelerate/Accelerate.h>
 using namespace std;
 typedef long long ll;
 namespace fs=std::__fs::filesystem;
@@ -38,16 +38,20 @@ public:
         char verify[4]; //will hold RIFF, WAVE, and fmt to verify that this is indeed a wave file.
         in.read(verify,4);
         
-        if (strncmp(verify,"RIFF",4)) {cerr<<"File format error!"<<endl;return;}
+        if (strncmp(verify,"RIFF",4)) {cerr<<"File format error! (RIFF)"<<endl;return;}
         int fsize;
         //next up: the size
         in.read((char*)&fsize,4); // evil bit hack lol
         
         //MARK: Verifications
         in.read(verify,4);
-        if (strncmp(verify,"WAVE",4)) {cerr<<"File format error!"<<endl;return;}
+        if (strncmp(verify,"WAVE",4)) {cerr<<"File format error! (VERFWAVE)"<<endl;return;}
+//        for (ll i=0;i<610;i++) {
+//            in.read(verify,1);
+//        }
         in.read(verify,4);
-        if (strncmp(verify,"fmt ",4)) {cerr<<"File format error!"<<endl;return;}
+        
+        if (strncmp(verify,"fmt ",4)) {cerr<<"File format error! (VERFfmt)"<<endl;return;}
         
         int formatChunkSize;
         in.read((char*)&formatChunkSize,4); // evil bit hack lol
@@ -58,8 +62,11 @@ public:
         //number of samples per second and how many bytes per second
         in.read((char*)&formatTag,2);in.read((char*)&channels,2);in.read((char*)&samplerate,4);in.read((char*)&avgbytespsec,4);in.read((char*)&blockAlign,2);in.read((char*)&bitspsample,2);
         if (channels!=1&&channels!=2) {cerr<<"Channel count not supported :/"<<endl;return;}
+//        for (ll i=0;i<4052;i++) {
+//            in.read(verify,1);
+//        }
         in.read(verify,4);
-        if (strncmp(verify,"data",4)) {cerr<<"File format error!"<<endl;return;}
+        if (strncmp(verify,"data",4)) {cerr<<"File format error! (VERFDATA)"<<endl;return;}
         in.read((char*)&datasize,4);
         
         if (bitspsample==8) {
@@ -97,6 +104,16 @@ public:
             datasize=datasize/2;
         }
     }
+    void bitrate48t16() {
+        ll finDtSz=datasize/3;
+        short *newDt=new short[finDtSz];
+        for (ll i=0;i<finDtSz;i++) {
+            newDt[i]=rawData16[i*3];
+        }
+        delete[] rawData16;
+        rawData16=newDt;
+        datasize=finDtSz;
+    }
     double *toDouble() {
         double* rturn=new double[datasize];
         for (ll i=0;i<datasize;i++) {
@@ -109,10 +126,10 @@ public:
 
 double const dftWindow=0.01533898305;
 double const frameInc=0.003813559322;
-double const chunkSz=1.0;
+double const chunkLen=1.0;
 double const strideLen=0.1;
-ll const resizeX=259;
-ll const resizeY=512;
+ll const resizeX=256;
+ll const resizeY=256;
 struct rgb {
     ll r,g,b;
 };
@@ -230,8 +247,8 @@ inline ll next2Pow(ll x) {
     }
     return x+1;
 }
-fs::path analPth="/Users/legitmichel777/Desktop/Orate/Datasets/sorted_IEMOCAP/Femalefea";
-fs::path toDir="/Users/legitmichel777/Desktop/Orate/Datasets/IEMOCAP_Specgram404";
+fs::path analPth="/Users/legitmichel777/Desktop/Orate/Datasets/Retired/sortedRAVDESS";
+fs::path toDir="/Users/legitmichel777/Desktop/Orate/Datasets/superPlan-RAVDESSdd";
 ll thrs=8;
 ll binL=-230,binR=0;
 ll bins=10000;
@@ -240,26 +257,23 @@ ll totBinned;
 double destroyPercentileL=1;
 double destroyPercentileR=1;
 mutex mtx;
-void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *frame,double *hammingWindow,fftw_plan fourierTransform,double *outCoefs,double scale,bool output,string outputPath,double lfreq,double rfreq) { //transform the audio
+void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *frame,double *hammingWindow,FFTSetup fftSetup,double *outCoefs,double scale,bool output,string outputPath,double lfreq,double rfreq) { //transform the audio
+    ll log2n=log2(interpolationSample);
     ll *myBin=new ll[bins];
     for (ll i=0;i<bins;i++) myBin[i]=0;
     //do cut
     ll resNum=0;
     ll numWhat=0;
     for (ll startSample=0;;startSample+=strideSample) {
+        chrono::steady_clock::time_point grs=chrono::steady_clock::now();
         zeroD:;
         if (startSample+chunkSample>masterSrc->datasize) break;
-        ll endSample=startSample+chunkSample;
+        //ll endSample=startSample+chunkSample;
         //from startSample..<endSample
         waveAu wavSrc=waveAu(masterSrc->is8,masterSrc->samplerate,chunkSample,masterSrc->channels,false); //inherit from master
         //copy from masterSrc
         wavSrc.rawData16=&masterSrc->rawData16[startSample];
         wavSrc.hasData=true;
-        
-        ll sqSumRegion=0;
-        for (ll j=0;j<wavSrc.datasize;j++) {
-            if (wavSrc.rawData16[j]!=0) sqSumRegion+=log(abs(wavSrc.rawData16[j]))*log(abs(wavSrc.rawData16[j]));
-        }
         
         //signal process
         vector<double*>spectr;
@@ -267,7 +281,10 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *fram
             double *coefs=new double[coefsNum];
             ll leftEdg=i-dftWindowSample/2;
             ll rightEdg=(frameIncSample%2?i+dftWindowSample/2:i+dftWindowSample/2+1);
-            if (rightEdg>=wavSrc.datasize) break;
+            if (rightEdg>=wavSrc.datasize) {
+                delete[] coefs;
+                break;
+            }
             
             bool isZeroTrap=true;
             for (ll j=leftEdg;j<=rightEdg&&isZeroTrap;j++) if (wavSrc.rawData16[j]!=0) isZeroTrap=false;
@@ -287,15 +304,32 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *fram
             }
             for (ll j=dftWindowSample;j<interpolationSample;j++) frame[j]=0;
             //execute fourier transform
+                    
+            float *input=new float[interpolationSample];
+            float *output=new float[interpolationSample];
+            for (ll i=0;i<interpolationSample;i++) input[i]=frame[i];
+            COMPLEX_SPLIT A;
+            A.realp=new float[interpolationSample/2];
+            A.imagp=new float[interpolationSample/2];
             
-            fftw_execute(fourierTransform);
-            coefs[0]=outCoefs[0]*outCoefs[0];
-            for (ll j=1;j<coefsNum;j++) coefs[j]=outCoefs[j]*outCoefs[j]+outCoefs[interpolationSample-j]*outCoefs[interpolationSample-j];
-            //if (dftWindowSample%2==0) coefs[dftWindowSample/2]=abs(outCoefs[dftWindowSample/2]);
+            vDSP_ctoz((COMPLEX*)input,2,&A,1,interpolationSample/2);
+            vDSP_fft_zrip(fftSetup,&A,1,log2n,FFT_FORWARD);
+            
+            coefs[0]=A.realp[0]*A.realp[0];
+            for (ll j=1;j<coefsNum;j++) {
+                coefs[j]=A.realp[j]*A.realp[j]+A.imagp[j]*A.imagp[j];
+                coefs[j]/=4;
+            }
+            
             for (ll j=0;j<coefsNum;j++) {
                 coefs[j]=10*log10(coefs[j]/scale);
             }
             spectr.push_back(coefs);
+            
+            delete[] input;
+            delete[] output;
+            delete[] A.realp;
+            delete[] A.imagp;
         }
         
         double **src=new double*[spectr.size()];
@@ -313,6 +347,7 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *fram
                 }
             }
         }
+//        cout<<chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - grs).count()<<" ms"<<endl;
         
         if (output) {
             double **dst=new double*[resizeX];
@@ -323,8 +358,8 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *fram
 //            lancos3Resample(src,dst,spectr.size(),coefsNum,resizeX,resizeY);
             for (ll i=0;i<resizeX;i++) {
                 for (ll j=0;j<resizeY;j++) {
-//                    dst[i][j]=src[(int)((double)i/resizeX*spectr.size())][int((double)j/resizeY*coefsNum)];
-                    dst[i][j]=src[i][j];
+                    dst[i][j]=src[(int)((double)i/resizeX*spectr.size())][int((double)j/resizeY*coefsNum)];
+//                    dst[i][j]=src[i][j];
                 }
             }
             
@@ -395,7 +430,7 @@ int main() {
     bool hasInit=false;
     fs::recursive_directory_iterator itr(analPth);
     dftWindowSample=interpolationSample=frameIncSample=coefsNum=chunkSample=strideSample=-1; //if you get -1 you know you fucked up
-    fftw_plan fourierTransform[thrs];
+    FFTSetup fourierTransform[thrs];
     double *frame[thrs];
     double *outCoefs[thrs];
     double *hammingWindow;
@@ -407,7 +442,12 @@ int main() {
     vector<analObj>toAnal;
     for (const fs::directory_entry& files:itr) {
         if (files.path().filename().extension()==".wav") {
-            toAnal.push_back((analObj){files.path(),files.path().parent_path().filename()});
+            string s=files.path().filename().string();
+            if (s.size()>4) {
+                if (s.substr(0,4)=="conv") {
+                    toAnal.push_back((analObj){files.path(),files.path().parent_path().filename()});
+                }
+            }
         }
     }
     cout<<"Found "<<toAnal.size()<<" files for analysis."<<endl;
@@ -425,6 +465,7 @@ int main() {
             continue;
         }
         daWav->toMono();
+        daWav->bitrate48t16();
         if (!hasInit) {
             cout<<"Initializing based on file "<<toAnal[times].fpth<<endl;
             if (daWav->is8) {
@@ -434,7 +475,7 @@ int main() {
             dftWindowSample=dftWindow*daWav->samplerate;
             interpolationSample=next2Pow(4*dftWindowSample); //interpolate!
             frameIncSample=frameInc*daWav->samplerate;
-            chunkSample=chunkSz*daWav->samplerate;
+            chunkSample=chunkLen*daWav->samplerate;
             strideSample=strideLen*daWav->samplerate;
             cout<<"System configuration\nExecution threads:"<<thrs<<"\n\nData configuration\nChunk samples:"<<chunkSample<<"\nStride samples:"<<strideSample<<"\nOutput image x:"<<resizeX<<"\nOutput image y:"<<resizeY<<"\nBins:"<<binL<<"..."<<binR<<" ("<<bins<<" bins)\nBin Percentiles(L R):"<<destroyPercentileL<<" "<<destroyPercentileR<<"\n\nFeature configuration\nDiscrete Fourier Transform samples:"<<dftWindowSample<<"\nInterpolated (zero padding) Discrete Fourier Transform window:"<<interpolationSample<<"\nFrame increment:"<<frameIncSample<<"\n";
             
@@ -442,7 +483,8 @@ int main() {
             for (ll i=0;i<thrs;i++) frame[i]=new double[interpolationSample];
             for (ll i=0;i<thrs;i++) outCoefs[i]=new double[interpolationSample];
             hammingWindow=new double[dftWindowSample];
-            for (ll i=0;i<thrs;i++) fourierTransform[i]=fftw_plan_r2r_1d(interpolationSample,frame[i],outCoefs[i],FFTW_R2HC,FFTW_ESTIMATE|FFTW_DESTROY_INPUT);
+            uint32_t log2n=log2(interpolationSample);
+            for (ll i=0;i<thrs;i++) fourierTransform[i]=vDSP_create_fftsetup(log2n,FFT_RADIX2);
             coefsNum=floor(interpolationSample/2.0);
             
             double hammingCorrectCoefficient=0;
@@ -507,6 +549,7 @@ int main() {
             continue;
         }
         daWav->toMono();
+        daWav->bitrate48t16();
         
         //find one
         ll freeWorker=-1;
@@ -535,9 +578,8 @@ int main() {
     for (ll i=0;i<thrs;i++) {
         delete[] frame[i];
         delete[] outCoefs[i];
-        fftw_destroy_plan(fourierTransform[i]);
+        vDSP_destroy_fftsetup(fourierTransform[i]);
     }
-    fftw_cleanup();
     delete[] hammingWindow;
     
     delete[] daBins;
