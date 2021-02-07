@@ -257,7 +257,7 @@ ll totBinned;
 double destroyPercentileL=1;
 double destroyPercentileR=1;
 mutex mtx;
-void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *frame,double *hammingWindow,FFTSetup fftSetup,double *outCoefs,double scale,bool output,string outputPath,double lfreq,double rfreq) { //transform the audio
+void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *frame,double *hammingWindow,FFTSetup fftSetup,double scale,bool output,string outputPath,double lfreq,double rfreq) { //transform the audio
     ll log2n=log2(interpolationSample);
     ll *myBin=new ll[bins];
     for (ll i=0;i<bins;i++) myBin[i]=0;
@@ -432,7 +432,6 @@ int main() {
     dftWindowSample=interpolationSample=frameIncSample=coefsNum=chunkSample=strideSample=-1; //if you get -1 you know you fucked up
     FFTSetup fourierTransform[thrs];
     double *frame[thrs];
-    double *outCoefs[thrs];
     double *hammingWindow;
     double scale;
     scale=-1;
@@ -481,7 +480,6 @@ int main() {
             
             //initialize everything
             for (ll i=0;i<thrs;i++) frame[i]=new double[interpolationSample];
-            for (ll i=0;i<thrs;i++) outCoefs[i]=new double[interpolationSample];
             hammingWindow=new double[dftWindowSample];
             uint32_t log2n=log2(interpolationSample);
             for (ll i=0;i<thrs;i++) fourierTransform[i]=vDSP_create_fftsetup(log2n,FFT_RADIX2);
@@ -513,7 +511,7 @@ int main() {
         job[freeWorker]=times;
         if (thr[freeWorker].joinable()) thr[freeWorker].join();
         
-        thr[freeWorker]=thread(processAud,freeWorker,job,daWav,daBins,frame[freeWorker],hammingWindow,fourierTransform[freeWorker],outCoefs[freeWorker],scale,false,"",0,0);
+        thr[freeWorker]=thread(processAud,freeWorker,job,daWav,daBins,frame[freeWorker],hammingWindow,fourierTransform[freeWorker],scale,false,"",0,0);
     }
     //merge with the threads
     for (ll i=0;i<thrs;i++) if (thr[i].joinable()) thr[i].join();
@@ -570,14 +568,13 @@ int main() {
         if (!fs::exists(goTo)) fs::create_directory(goTo);
         goTo/=toAnal[times].fpth.filename();
         
-        thr[freeWorker]=thread(processAud,freeWorker,job,daWav,daBins,frame[freeWorker],hammingWindow,fourierTransform[freeWorker],outCoefs[freeWorker],scale,true,goTo.string(),lfreq,rfreq);
+        thr[freeWorker]=thread(processAud,freeWorker,job,daWav,daBins,frame[freeWorker],hammingWindow,fourierTransform[freeWorker],scale,true,goTo.string(),lfreq,rfreq);
     }
     
     for (ll i=0;i<thrs;i++) if (thr[i].joinable()) thr[i].join();
     
     for (ll i=0;i<thrs;i++) {
         delete[] frame[i];
-        delete[] outCoefs[i];
         vDSP_destroy_fftsetup(fourierTransform[i]);
     }
     delete[] hammingWindow;

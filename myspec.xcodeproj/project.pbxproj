@@ -23,6 +23,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		F02CF49025CFC114003A53FF /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		F0BD14C325BD0BB600BA3AF1 /* myspec */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = myspec; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0BD14C625BD0BB600BA3AF1 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		F0BD14D425BD8D9E00BA3AF1 /* myspec.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = myspec.entitlements; sourceTree = "<group>"; };
@@ -42,6 +43,7 @@
 		F0BD14BA25BD0BB600BA3AF1 = {
 			isa = PBXGroup;
 			children = (
+				F02CF49025CFC114003A53FF /* LICENSE */,
 				F0BD14C525BD0BB600BA3AF1 /* myspec */,
 				F0BD14C425BD0BB600BA3AF1 /* Products */,
 			);
