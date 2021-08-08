@@ -8,6 +8,8 @@
 #ifndef lanczos_h
 #define lanczos_h
 
+typedef long long ll;
+
 double sinc(double x) {
     x*=M_PI;
     if (x<0.01f && x>-0.01f) return 1.0+x*x*(-1.0/6.0+x*x*1.0/120.0);

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		F0BD14C725BD0BB600BA3AF1 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F0BD14C625BD0BB600BA3AF1 /* main.cpp */; };
+		F0BE99FF26C000A70012CD21 /* lodepng.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F0BE99FD26C000A70012CD21 /* lodepng.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -27,6 +28,8 @@
 		F0BD14C325BD0BB600BA3AF1 /* myspec */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = myspec; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0BD14C625BD0BB600BA3AF1 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		F0BD14D425BD8D9E00BA3AF1 /* myspec.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = myspec.entitlements; sourceTree = "<group>"; };
+		F0BE99FD26C000A70012CD21 /* lodepng.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = lodepng.cpp; path = "../../../../../../Downloads/lodepng-master/lodepng.cpp"; sourceTree = "<group>"; };
+		F0BE99FE26C000A70012CD21 /* lodepng.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = lodepng.h; path = "../../../../../../Downloads/lodepng-master/lodepng.h"; sourceTree = "<group>"; };
 		F0E7E5E826BF91E3005266B8 /* writeOutImage.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = writeOutImage.hpp; sourceTree = "<group>"; };
 		F0E7E5EA26BF927D005266B8 /* lancos.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = lancos.hpp; sourceTree = "<group>"; };
 		F0E7E5EC26BFA14A005266B8 /* waveAu.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = waveAu.hpp; sourceTree = "<group>"; };
@@ -70,6 +73,8 @@
 				F0E7E5EC26BFA14A005266B8 /* waveAu.hpp */,
 				F0E7E5EA26BF927D005266B8 /* lancos.hpp */,
 				F0E7E5E826BF91E3005266B8 /* writeOutImage.hpp */,
+				F0BE99FD26C000A70012CD21 /* lodepng.cpp */,
+				F0BE99FE26C000A70012CD21 /* lodepng.h */,
 			);
 			path = myspec;
 			sourceTree = "<group>";
@@ -131,6 +136,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F0BD14C725BD0BB600BA3AF1 /* main.cpp in Sources */,
+				F0BE99FF26C000A70012CD21 /* lodepng.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

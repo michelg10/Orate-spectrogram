@@ -5,10 +5,11 @@
 #include <thread>
 #include <unistd.h>
 #include <Accelerate/Accelerate.h>
-#include "writeOutImage.hpp"
+#include <random>
 #include "lancos.hpp"
 #include "waveAu.hpp"
 #include "utils.hpp"
+#include "lodepng.h"
 using namespace std;
 typedef long long ll;
 namespace fs=std::__fs::filesystem;
@@ -132,36 +133,33 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
             for (ll i=0;i<spectr.size();i++) delete[] spectr[i];
             delete[] src;
             
-            png_bytepp pngdt=new png_bytep[resizeX];
-            for (ll i=0;i<resizeX;i++) pngdt[i]=new png_byte[3*resizeY];
             double minRng=lfreq,maxRng=rfreq;
+            numWhat++;
+          
+            std::vector<unsigned char> image;
+            image.resize(resizeX * resizeY * 4);
             for (ll i=0;i<resizeX;i++) {
-                png_bytep curRow=pngdt[i];
                 for (ll j=0;j<resizeY;j++) {
-                    png_bytep dbt=&curRow[j*3];
                     double thePix=(dst[i][j]-minRng)/(maxRng-minRng);
                     ll fin=thePix*256;
                     fin=max(fin,0ll);
                     fin=min(fin,255ll);
                     rgb curPixel=jetMap[fin];
-                    dbt[0]=curPixel.r;
-                    dbt[1]=curPixel.g;
-                    dbt[2]=curPixel.b;
+                    image[4*resizeY*i+4*j+0]=curPixel.r;
+                    image[4*resizeY*i+4*j+1]=curPixel.g;
+                    image[4*resizeY*i+4*j+2]=curPixel.b;
+                    image[4*resizeY*i+4*j+3]=255;
                 }
             }
-            numWhat++;
-            writeOutImage(pngdt,outputPath+"_"+to_string(numWhat)+".png",resizeX,resizeY);
+            string outPath=outputPath+"_"+to_string(numWhat)+".png";
+            lodepng::encode(outPath.c_str(), image, resizeX, resizeY);
+            
             for (ll i=0;i<resizeX;i++) delete[] dst[i];
             delete[] dst;
-            for (ll i=0;i<resizeX;i++) delete[] pngdt[i];
-            delete[] pngdt;
         } else {
             for (ll i=0;i<spectr.size();i++) delete[] spectr[i];
             delete[] src;
         }
-        
-        //IMPORTANT: Erase this
-        break;
     }
     if (bins != -1) {
         delete[] myBin;
@@ -174,6 +172,7 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
 }
 
 bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, double destroyPercentileL, double destroyPercentileR, double dftWindow, double frameInc, double chunkLen, double strideLen, ll resizeX, ll resizeY) {
+    chrono::steady_clock::time_point grs=chrono::steady_clock::now();
     ll totBinned=0;
     
     bool hasInit=false;
@@ -199,7 +198,6 @@ bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, do
             continue;
         }
         daWav->toMono();
-        daWav->bitrate48t16();
         if (!hasInit) {
             cout<<"Initializing based on file "<<toAnal[times].inPath<<endl;
             if (daWav->is8) {
@@ -245,8 +243,12 @@ bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, do
         }
         job[freeWorker]=times;
         if (thr[freeWorker].joinable()) thr[freeWorker].join();
-
+        
         thr[freeWorker]=thread(processAud,freeWorker,job,daWav, &totBinned, daBins, bins, binL, binR, frame[freeWorker],hammingWindow,fourierTransform[freeWorker],scale,false,"", -1, -1, -1, -1, dftWindowSample, interpolationSample, frameIncSample, coefsNum, chunkSample, strideSample);
+        
+        if (totBinned>70000000000) { // cap it at ~30s
+            break;
+        }
     }
     //merge with the threads
     for (ll i=0;i<thrs;i++) if (thr[i].joinable()) thr[i].join();
@@ -286,8 +288,14 @@ bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, do
     double rfreq=bound*(binR-binL)/(double)bins+binL-(tryBin-theTot)/(double)daBins[bound]*(binR-binL)/bins; //linear interpolate left frequency
     cout<<"Frequency Range "<<lfreq<<" "<<rfreq<<endl;
     
+    cout<<"Frequency range determination took "<<chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - grs).count()<<"ms"<<endl<<endl;
+    
+    grs=chrono::steady_clock::now();
+    
     cout<<"Outputting images"<<endl;
     for (ll i=0;i<thrs;i++) job[i]=-1;
+    
+    ll lastProgressReport=0;
     for (ll times=0;times<toAnal.size();times++) {
 //        if (toAnal[times].fpth.parent_path().filename()!="Malesad   ") continue;
 //        cout<<"Output Job "<<times<<" "<<toAnal[times].fpth<<endl;
@@ -315,6 +323,12 @@ bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, do
         if (thr[freeWorker].joinable()) thr[freeWorker].join();
         
         thr[freeWorker]=thread(processAud,freeWorker,job,daWav, nullptr, nullptr, -1, -1, -1, frame[freeWorker],hammingWindow,fourierTransform[freeWorker],scale,true,toAnal[times].outPath.string(), resizeX, resizeY, lfreq, rfreq, dftWindowSample, interpolationSample, frameIncSample, coefsNum, chunkSample, strideSample);
+        
+        ll tensProgress=(int)((double)times/toAnal.size()*10);
+        if (tensProgress>lastProgressReport) {
+            cout<<"Progress - "<<tensProgress*10<<"%"<<endl;
+            lastProgressReport=tensProgress;
+        }
     }
     
     for (ll i=0;i<thrs;i++) if (thr[i].joinable()) thr[i].join();
@@ -330,12 +344,12 @@ bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, do
     delete[] daBins;
     delete[] job;
     
+    cout<<"Output took "<<chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - grs).count()<<"ms"<<endl<<endl;;
+    
     return true;
 }
 
 int main() {
-    chrono::steady_clock::time_point grs=chrono::steady_clock::now();
-    
     ifstream in("/Users/legitmichel777/Developer/Orate/Code/Spectrogram Generation/jet.csv");
     for (ll i=0;i<256;i++) {
         char take;
@@ -349,6 +363,7 @@ int main() {
         in>>tmp;
         jetMap[i].b=tmp*255;
     }
+    in.close();
     
 //    for (double dftWindow=0.001; dftWindow<0.1;dftWindow+=0.0001) {
 //        vector<analObj>toAnal;
@@ -383,28 +398,272 @@ int main() {
 //        }
 //    }
     
-    fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/emoDB-sorted");
-
-    fs::path toDir="/Users/legitmichel777/Developer/Orate/Datasets/temp-gen";
-    if (fs::exists(toDir)) {
-        fs::remove_all(toDir);
-    }
-    fs::create_directory(toDir);
-    vector<analObj>toAnal;
-    for (const fs::directory_entry& files:itr) {
-        if (files.path().filename().extension()==".wav") {
-            string s=files.path().filename().string();
-            fs::path outPath=toDir/files.path().parent_path().filename();
-            if (!fs::exists(outPath)) fs::create_directory(outPath);
-            outPath/=files.path().filename();
-            toAnal.push_back((analObj){files.path(),outPath});
+//    fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/sorted_IEMOCAP");
+//
+//    fs::path toDir="/Users/legitmichel777/Developer/Orate/Datasets/temp-gen";
+//    if (fs::exists(toDir)) {
+//        fs::remove_all(toDir);
+//    }
+//    fs::create_directory(toDir);
+//    vector<analObj>toAnal;
+//    for (const fs::directory_entry& files:itr) {
+//        if (files.path().filename().extension()==".wav") {
+//            string s=files.path().filename().string();
+//            fs::path outPath=toDir/files.path().parent_path().filename();
+//            if (!fs::exists(outPath)) fs::create_directory(outPath);
+//            outPath/=files.path().filename();
+//            toAnal.push_back((analObj){files.path(),outPath});
+//        }
+//    }
+//    unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
+//    shuffle(toAnal.begin(), toAnal.end(), std::default_random_engine(seed));
+//    cout<<"Found "<<toAnal.size()<<" files for analysis."<<endl;
+//
+//    double dftWindow=0.01533898305;
+//    runJobsBatch(toAnal, 8, -230, 0, 10000, 1, 1, dftWindow, dftWindow/4, 1.0, 0.1, 225, 225);
+    
+    // for real jobs
+    
+    {
+        cout<<"IEMOCAP Task"<<endl;
+        //IEMOCAP
+        fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/sorted_IEMOCAP2");
+        
+        fs::path toDir="/Volumes/Temporary F/IEMOCAP-gen-common4only";
+        if (fs::exists(toDir)) {
+            fs::remove_all(toDir);
+        }
+        fs::create_directory(toDir);
+        fs::create_directory(toDir/"low");
+        fs::create_directory(toDir/"mid");
+        fs::create_directory(toDir/"high");
+        vector<analObj>toAnal[3];
+        for (const fs::directory_entry& files:itr) {
+            if (files.path().filename().extension()==".wav") {
+                string s=files.path().filename().string();
+                fs::path outPath[3];
+                outPath[0]=toDir/"low"/files.path().parent_path().filename();
+                outPath[1]=toDir/"mid"/files.path().parent_path().filename();
+                outPath[2]=toDir/"high"/files.path().parent_path().filename();
+                for (ll i=0;i<3;i++) {
+                    if (!fs::exists(outPath[i])) fs::create_directory(outPath[i]);
+                    outPath[i]/=files.path().filename();
+                    toAnal[i].push_back((analObj){files.path(),outPath[i]});
+                }
+            }
+        }
+        unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
+        for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
+        for (ll i=0;i<3;i++) {
+            cout<<"Batch "<<i<<endl;
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
         }
     }
-    cout<<"Found "<<toAnal.size()<<" files for analysis."<<endl;
-
-    double dftWindow=0.01533898305;
-    runJobsBatch(toAnal, 8, -230, 0, 10000, 1, 1, dftWindow, dftWindow/4, 1.0, 0.1, 225, 225);
     
-    cout<<chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - grs).count()<<endl;
+    {
+        cout<<"CREMA-D Task"<<endl;
+        // CREMA-D
+        fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/CREMA-D sorted2");
+        
+        fs::path toDir="/Volumes/Temporary F/CREMAD-gen-common4only";
+        if (fs::exists(toDir)) {
+            fs::remove_all(toDir);
+        }
+        fs::create_directory(toDir);
+        fs::create_directory(toDir/"low");
+        fs::create_directory(toDir/"mid");
+        fs::create_directory(toDir/"high");
+        vector<analObj>toAnal[3];
+        for (const fs::directory_entry& files:itr) {
+            if (files.path().filename().extension()==".wav") {
+                if (files.path().parent_path().filename()=="Angry"||files.path().parent_path().filename()=="Neutral"||files.path().parent_path().filename()=="Happy"||files.path().parent_path().filename()=="Sad") {
+                    string s=files.path().filename().string();
+                    fs::path outPath[3];
+                    outPath[0]=toDir/"low"/files.path().parent_path().filename();
+                    outPath[1]=toDir/"mid"/files.path().parent_path().filename();
+                    outPath[2]=toDir/"high"/files.path().parent_path().filename();
+                    for (ll i=0;i<3;i++) {
+                        if (!fs::exists(outPath[i])) fs::create_directory(outPath[i]);
+                        outPath[i]/=files.path().filename();
+                        toAnal[i].push_back((analObj){files.path(),outPath[i]});
+                    }
+                }
+            }
+        }
+        unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
+        for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
+        for (ll i=0;i<3;i++) {
+            cout<<"Batch "<<i<<endl;
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+        }
+    }
+    
+    {
+        cout<<"emoDB Task"<<endl;
+        // emoDB
+        fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/emoDB-sorted");
+        
+        fs::path toDir="/Volumes/Temporary F/emoDB-gen-common4only";
+        if (fs::exists(toDir)) {
+            fs::remove_all(toDir);
+        }
+        fs::create_directory(toDir);
+        fs::create_directory(toDir/"low");
+        fs::create_directory(toDir/"mid");
+        fs::create_directory(toDir/"high");
+        vector<analObj>toAnal[3];
+        for (const fs::directory_entry& files:itr) {
+            if (files.path().filename().extension()==".wav") {
+                if (files.path().parent_path().filename()=="anger"||files.path().parent_path().filename()=="happy"||files.path().parent_path().filename()=="neutral"||files.path().parent_path().filename()=="sad") {
+                    string s=files.path().filename().string();
+                    fs::path outPath[3];
+                    outPath[0]=toDir/"low"/files.path().parent_path().filename();
+                    outPath[1]=toDir/"mid"/files.path().parent_path().filename();
+                    outPath[2]=toDir/"high"/files.path().parent_path().filename();
+                    for (ll i=0;i<3;i++) {
+                        if (!fs::exists(outPath[i])) fs::create_directory(outPath[i]);
+                        outPath[i]/=files.path().filename();
+                        toAnal[i].push_back((analObj){files.path(),outPath[i]});
+                    }
+                }
+            }
+        }
+        unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
+        for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
+        for (ll i=0;i<3;i++) {
+            cout<<"Batch "<<i<<endl;
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+        }
+    }
+    
+    {
+        cout<<"SAVEE Task"<<endl;
+        // SAVEE
+        fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/SAVEE");
+        
+        fs::path toDir="/Volumes/Temporary F/SAVEE-gen-common4only";
+        if (fs::exists(toDir)) {
+            fs::remove_all(toDir);
+        }
+        fs::create_directory(toDir);
+        fs::create_directory(toDir/"low");
+        fs::create_directory(toDir/"mid");
+        fs::create_directory(toDir/"high");
+        vector<analObj>toAnal[3];
+        for (const fs::directory_entry& files:itr) {
+            if (files.path().filename().extension()==".wav") {
+                if (files.path().parent_path().filename()=="Angry"||files.path().parent_path().filename()=="Happy"||files.path().parent_path().filename()=="Neutral"||files.path().parent_path().filename()=="Sad") {
+                    string s=files.path().filename().string();
+                    if (s.size()>4) {
+                        if (s.substr(0,4)!="conv") {
+                            continue;
+                        }
+                    }
+                    fs::path outPath[3];
+                    outPath[0]=toDir/"low"/files.path().parent_path().filename();
+                    outPath[1]=toDir/"mid"/files.path().parent_path().filename();
+                    outPath[2]=toDir/"high"/files.path().parent_path().filename();
+                    for (ll i=0;i<3;i++) {
+                        if (!fs::exists(outPath[i])) fs::create_directory(outPath[i]);
+                        outPath[i]/=files.path().filename();
+                        toAnal[i].push_back((analObj){files.path(),outPath[i]});
+                    }
+                }
+            }
+        }
+        unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
+        for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
+        for (ll i=0;i<3;i++) {
+            cout<<"Batch "<<i<<endl;
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+        }
+    }
+    
+    {
+        cout<<"RAVDESS Task"<<endl;
+        // RAVDESS
+        fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/sortedRAVDESS");
+        
+        fs::path toDir="/Volumes/Temporary F/RAVDESS-gen-common4only";
+        if (fs::exists(toDir)) {
+            fs::remove_all(toDir);
+        }
+        fs::create_directory(toDir);
+        fs::create_directory(toDir/"low");
+        fs::create_directory(toDir/"mid");
+        fs::create_directory(toDir/"high");
+        vector<analObj>toAnal[3];
+        for (const fs::directory_entry& files:itr) {
+            if (files.path().filename().extension()==".wav") {
+                string parentPath=files.path().parent_path().filename();
+                replaceAll(parentPath, "Female_", "");
+                replaceAll(parentPath, "Male_", "");
+                if (parentPath=="angry"||parentPath=="happy"||parentPath=="neutral"||parentPath=="sad") {
+                    string s=files.path().filename().string();
+                    if (s.size()>4) {
+                        if (s.substr(0,4)!="conv") {
+                            continue;
+                        }
+                    }
+                    fs::path outPath[3];
+                    outPath[0]=toDir/"low"/parentPath;
+                    outPath[1]=toDir/"mid"/parentPath;
+                    outPath[2]=toDir/"high"/parentPath;
+                    for (ll i=0;i<3;i++) {
+                        if (!fs::exists(outPath[i])) fs::create_directory(outPath[i]);
+                        outPath[i]/=files.path().filename();
+                        toAnal[i].push_back((analObj){files.path(),outPath[i]});
+                    }
+                }
+            }
+        }
+        unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
+        for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
+        for (ll i=0;i<3;i++) {
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+        }
+    }
+    
+    {
+        cout<<"TESS Task"<<endl;
+        // TESS
+        fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/TESS");
+        
+        fs::path toDir="/Volumes/Temporary F/TESS-gen-common4only";
+        if (fs::exists(toDir)) {
+            fs::remove_all(toDir);
+        }
+        fs::create_directory(toDir);
+        fs::create_directory(toDir/"low");
+        fs::create_directory(toDir/"mid");
+        fs::create_directory(toDir/"high");
+        vector<analObj>toAnal[3];
+        for (const fs::directory_entry& files:itr) {
+            if (files.path().filename().extension()==".wav") {
+                if (files.path().parent_path().filename()=="Angry"||files.path().parent_path().filename()=="Happy"||files.path().parent_path().filename()=="Neutral"||files.path().parent_path().filename()=="Sad") {
+                    string s=files.path().filename().string();
+                    if (s.size()>4) {
+                        if (s.substr(0,4)!="conv") {
+                            continue;
+                        }
+                    }
+                    fs::path outPath[3];
+                    outPath[0]=toDir/"low"/files.path().parent_path().filename();
+                    outPath[1]=toDir/"mid"/files.path().parent_path().filename();
+                    outPath[2]=toDir/"high"/files.path().parent_path().filename();
+                    for (ll i=0;i<3;i++) {
+                        if (!fs::exists(outPath[i])) fs::create_directory(outPath[i]);
+                        outPath[i]/=files.path().filename();
+                        toAnal[i].push_back((analObj){files.path(),outPath[i]});
+                    }
+                }
+            }
+        }
+        unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
+        for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
+        for (ll i=0;i<3;i++) {
+            cout<<"Batch "<<i<<endl;
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+        }
+    }
 }
-
