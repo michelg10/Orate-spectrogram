@@ -13,7 +13,6 @@ using namespace std;
 typedef long long ll;
 namespace fs=std::__fs::filesystem;
 rgb jetMap[256];
-fs::path analPth="/Users/legitmichel777/Developer/Orate/Datasets/emoDB-sorted";
 mutex mtx;
 
 void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *masterBin, ll bins, ll binL, ll binR, double *frame,double *hammingWindow,FFTSetup fftSetup,double scale,bool output,string outputPath, ll resizeX, ll resizeY, double lfreq,double rfreq, ll dftWindowSample,ll interpolationSample,ll frameIncSample,ll coefsNum,ll chunkSample,ll strideSample) { //transform the audio
@@ -160,11 +159,16 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
             for (ll i=0;i<spectr.size();i++) delete[] spectr[i];
             delete[] src;
         }
+        
+        //IMPORTANT: Erase this
+        break;
     }
-    delete[] myBin;
+    if (bins != -1) {
+        delete[] myBin;
+    }
     delete[] masterSrc->rawData16;
     delete masterSrc;
-    cout<<job[workerID]<<" execution complete"<<endl;
+//    cout<<job[workerID]<<" execution complete"<<endl;
     job[workerID]=-1;
     //important: deallocate everything
 }
@@ -330,6 +334,8 @@ bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, do
 }
 
 int main() {
+    chrono::steady_clock::time_point grs=chrono::steady_clock::now();
+    
     ifstream in("/Users/legitmichel777/Developer/Orate/Code/Spectrogram Generation/jet.csv");
     for (ll i=0;i<256;i++) {
         char take;
@@ -344,26 +350,61 @@ int main() {
         jetMap[i].b=tmp*255;
     }
     
-//    fs::recursive_directory_iterator itr(analPth);
-//
-//    fs::path toDir="/Users/legitmichel777/Developer/Orate/Datasets/emoDB-gen";
-//    if (fs::exists(toDir)) {
-//        fs::remove_all(toDir);
+//    for (double dftWindow=0.001; dftWindow<0.1;dftWindow+=0.0001) {
+//        vector<analObj>toAnal;
+//        fs::path toDir="/Users/legitmichel777/Developer/Orate/Datasets/windowsize-eval/"+to_string(dftWindow)+".wav";
+//        toAnal.push_back((analObj){"/Users/legitmichel777/Developer/Orate/Datasets/emoDB/08a04Tb.wav", toDir.string()});
+//        runJobsBatch(toAnal, 8, -230, 0, 10000, 1, 1, dftWindow, dftWindow/4, 1.0, 0.1, 225, 225);
 //    }
-//    fs::create_directory(toDir);
-//    vector<analObj>toAnal;
-//    for (const fs::directory_entry& files:itr) {
-//        if (files.path().filename().extension()==".wav") {
-//            string s=files.path().filename().string();
-//            fs::path outPath=toDir/files.path().parent_path().filename();
-//            if (!fs::exists(outPath)) fs::create_directory(outPath);
-//            outPath/=files.path().filename();
-//            toAnal.push_back((analObj){files.path(),outPath});
+    
+    vector<double>dftWindows;
+    dftWindows.push_back(0.0071);
+    dftWindows.push_back(0.01533898305);
+    dftWindows.push_back(0.0254);
+    
+    struct csvEntry {
+        string image1;
+        string image2;
+        string image3;
+        string emotion;
+    };
+    
+//    {
+//        fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/emoDB-sorted");
+//        vector<analObj>toAnal;
+//        for (const fs::directory_entry& files:itr) {
+//            if (files.path().filename().extension()==".wav") {
+//                string s=files.path().filename().string();
+//                fs::path outPath="/Volumes/smerge/"+files.path().parent_path().filename().string();
+//                if (!fs::exists(outPath)) fs::create_directory(outPath);
+//                outPath/=files.path().filename();
+//                toAnal.push_back((analObj){files.path(),outPath});
+//            }
 //        }
 //    }
-//    cout<<"Found "<<toAnal.size()<<" files for analysis."<<endl;
-//
-//    double dftWindow=0.01533898305;
-//    runJobsBatch(toAnal, 8, -230, 0, 10000, 1, 1, dftWindow, dftWindow/4, 1.0, 0.1, 225, 225);
+    
+    fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/emoDB-sorted");
+
+    fs::path toDir="/Users/legitmichel777/Developer/Orate/Datasets/temp-gen";
+    if (fs::exists(toDir)) {
+        fs::remove_all(toDir);
+    }
+    fs::create_directory(toDir);
+    vector<analObj>toAnal;
+    for (const fs::directory_entry& files:itr) {
+        if (files.path().filename().extension()==".wav") {
+            string s=files.path().filename().string();
+            fs::path outPath=toDir/files.path().parent_path().filename();
+            if (!fs::exists(outPath)) fs::create_directory(outPath);
+            outPath/=files.path().filename();
+            toAnal.push_back((analObj){files.path(),outPath});
+        }
+    }
+    cout<<"Found "<<toAnal.size()<<" files for analysis."<<endl;
+
+    double dftWindow=0.01533898305;
+    runJobsBatch(toAnal, 8, -230, 0, 10000, 1, 1, dftWindow, dftWindow/4, 1.0, 0.1, 225, 225);
+    
+    cout<<chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - grs).count()<<endl;
 }
 
