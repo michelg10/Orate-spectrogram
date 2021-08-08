@@ -27,6 +27,10 @@
 		F0BD14C325BD0BB600BA3AF1 /* myspec */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = myspec; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0BD14C625BD0BB600BA3AF1 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		F0BD14D425BD8D9E00BA3AF1 /* myspec.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = myspec.entitlements; sourceTree = "<group>"; };
+		F0E7E5E826BF91E3005266B8 /* writeOutImage.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = writeOutImage.hpp; sourceTree = "<group>"; };
+		F0E7E5EA26BF927D005266B8 /* lancos.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = lancos.hpp; sourceTree = "<group>"; };
+		F0E7E5EC26BFA14A005266B8 /* waveAu.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = waveAu.hpp; sourceTree = "<group>"; };
+		F0E7E5EE26BFA452005266B8 /* utils.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = utils.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +66,10 @@
 			children = (
 				F0BD14D425BD8D9E00BA3AF1 /* myspec.entitlements */,
 				F0BD14C625BD0BB600BA3AF1 /* main.cpp */,
+				F0E7E5EE26BFA452005266B8 /* utils.hpp */,
+				F0E7E5EC26BFA14A005266B8 /* waveAu.hpp */,
+				F0E7E5EA26BF927D005266B8 /* lancos.hpp */,
+				F0E7E5E826BF91E3005266B8 /* writeOutImage.hpp */,
 			);
 			path = myspec;
 			sourceTree = "<group>";
