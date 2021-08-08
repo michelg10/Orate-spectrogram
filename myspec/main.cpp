@@ -14,7 +14,6 @@ typedef long long ll;
 namespace fs=std::__fs::filesystem;
 rgb jetMap[256];
 fs::path analPth="/Users/legitmichel777/Developer/Orate/Datasets/emoDB-sorted";
-fs::path toDir="/Users/legitmichel777/Developer/Orate/Datasets/emoDB-gen";
 mutex mtx;
 
 void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *masterBin, ll bins, ll binL, ll binR, double *frame,double *hammingWindow,FFTSetup fftSetup,double scale,bool output,string outputPath, ll resizeX, ll resizeY, double lfreq,double rfreq, ll dftWindowSample,ll interpolationSample,ll frameIncSample,ll coefsNum,ll chunkSample,ll strideSample) { //transform the audio
@@ -26,6 +25,7 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
     }
     //do cut
     ll numWhat=0;
+    
     for (ll startSample=0;;startSample+=strideSample) {
         zeroD:;
         if (startSample+chunkSample>masterSrc->datasize) break;
@@ -111,7 +111,7 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
             mtx.lock();
             for (ll i=0;i<bins;i++) {
                 masterBin[i]+=myBin[i];
-                totBinned+=myBin[i];
+                *totBinned+=myBin[i];
             }
             mtx.unlock();
         }
@@ -164,24 +164,13 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
     delete[] myBin;
     delete[] masterSrc->rawData16;
     delete masterSrc;
-//    cout<<job[workerID]<<" execution complete"<<endl;
+    cout<<job[workerID]<<" execution complete"<<endl;
     job[workerID]=-1;
     //important: deallocate everything
 }
 
-bool runJobsBatch(vector<analObj> toAnal) {
-    ll thrs=8;
-    ll binL=-230,binR=0;
-    ll bins=10000;
-    ll totBinned;
-    double destroyPercentileL=1;
-    double destroyPercentileR=1;
-    double const dftWindow=0.017;
-    double const frameInc=dftWindow/4.0;
-    double const chunkLen=1.0;
-    double const strideLen=0.1;
-    ll const resizeX=225;
-    ll const resizeY=225;
+bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, double destroyPercentileL, double destroyPercentileR, double dftWindow, double frameInc, double chunkLen, double strideLen, ll resizeX, ll resizeY) {
+    ll totBinned=0;
     
     bool hasInit=false;
     ll dftWindowSample,interpolationSample,frameIncSample,coefsNum,chunkSample,strideSample;
@@ -200,15 +189,15 @@ bool runJobsBatch(vector<analObj> toAnal) {
     cout<<"Running Preprocess..."<<endl;
     for (ll times=0;times<toAnal.size();times++) {
 //        cout<<"Preprocess Job "<<times<<" "<<toAnal[times].fpth<<endl;
-        waveAu* daWav=new waveAu(toAnal[times].fpth);
+        waveAu* daWav=new waveAu(toAnal[times].inPath);
         if (!daWav->hasData) {
-            cout<<"Read error at "<<toAnal[times].fpth<<", skipping..."<<endl;
+            cout<<"Read error at "<<toAnal[times].inPath<<", skipping..."<<endl;
             continue;
         }
         daWav->toMono();
         daWav->bitrate48t16();
         if (!hasInit) {
-            cout<<"Initializing based on file "<<toAnal[times].fpth<<endl;
+            cout<<"Initializing based on file "<<toAnal[times].inPath<<endl;
             if (daWav->is8) {
                 cout<<"No 8-bit!"<<endl;
                 return false;
@@ -258,6 +247,21 @@ bool runJobsBatch(vector<analObj> toAnal) {
     //merge with the threads
     for (ll i=0;i<thrs;i++) if (thr[i].joinable()) thr[i].join();
     
+    if (totBinned==0) {
+        cout<<"Fatal error: no elements in bin!"<<endl;
+        if (hasInit) {
+            for (ll i=0;i<thrs;i++) {
+                delete[] frame[i];
+                vDSP_destroy_fftsetup(fourierTransform[i]);
+            }
+            delete[] hammingWindow;
+        }
+
+        delete[] daBins;
+        delete[] job;
+
+        return false;
+    }
     //determine L and R
     ll tryBin=totBinned*destroyPercentileL/100.0;
     ll bound=0;
@@ -283,9 +287,9 @@ bool runJobsBatch(vector<analObj> toAnal) {
     for (ll times=0;times<toAnal.size();times++) {
 //        if (toAnal[times].fpth.parent_path().filename()!="Malesad   ") continue;
 //        cout<<"Output Job "<<times<<" "<<toAnal[times].fpth<<endl;
-        waveAu* daWav=new waveAu(toAnal[times].fpth);
+        waveAu* daWav=new waveAu(toAnal[times].inPath);
         if (!daWav->hasData) {
-            cout<<"Read error at "<<toAnal[times].fpth<<", skipping..."<<endl;
+            cout<<"Read error at "<<toAnal[times].inPath<<", skipping..."<<endl;
             continue;
         }
         daWav->toMono();
@@ -306,11 +310,7 @@ bool runJobsBatch(vector<analObj> toAnal) {
         job[freeWorker]=times;
         if (thr[freeWorker].joinable()) thr[freeWorker].join();
         
-        fs::path goTo=toDir/toAnal[times].emo;
-        if (!fs::exists(goTo)) fs::create_directory(goTo);
-        goTo/=toAnal[times].fpth.filename();
-        
-        thr[freeWorker]=thread(processAud,freeWorker,job,daWav, nullptr, nullptr, -1, -1, -1, frame[freeWorker],hammingWindow,fourierTransform[freeWorker],scale,true,goTo.string(), resizeX, resizeY, lfreq, rfreq, dftWindowSample, interpolationSample, frameIncSample, coefsNum, chunkSample, strideSample);
+        thr[freeWorker]=thread(processAud,freeWorker,job,daWav, nullptr, nullptr, -1, -1, -1, frame[freeWorker],hammingWindow,fourierTransform[freeWorker],scale,true,toAnal[times].outPath.string(), resizeX, resizeY, lfreq, rfreq, dftWindowSample, interpolationSample, frameIncSample, coefsNum, chunkSample, strideSample);
     }
     
     for (ll i=0;i<thrs;i++) if (thr[i].joinable()) thr[i].join();
@@ -344,21 +344,26 @@ int main() {
         jetMap[i].b=tmp*255;
     }
     
-    if (fs::exists(toDir)) {
-        fs::remove_all(toDir);
-    }
-    fs::create_directory(toDir);
-    
-    fs::recursive_directory_iterator itr(analPth);
-    vector<analObj>toAnal;
-    for (const fs::directory_entry& files:itr) {
-        if (files.path().filename().extension()==".wav") {
-            string s=files.path().filename().string();
-            toAnal.push_back((analObj){files.path(),files.path().parent_path().filename()});
-        }
-    }
-    cout<<"Found "<<toAnal.size()<<" files for analysis."<<endl;
-    
-    runJobsBatch(toAnal);
+//    fs::recursive_directory_iterator itr(analPth);
+//
+//    fs::path toDir="/Users/legitmichel777/Developer/Orate/Datasets/emoDB-gen";
+//    if (fs::exists(toDir)) {
+//        fs::remove_all(toDir);
+//    }
+//    fs::create_directory(toDir);
+//    vector<analObj>toAnal;
+//    for (const fs::directory_entry& files:itr) {
+//        if (files.path().filename().extension()==".wav") {
+//            string s=files.path().filename().string();
+//            fs::path outPath=toDir/files.path().parent_path().filename();
+//            if (!fs::exists(outPath)) fs::create_directory(outPath);
+//            outPath/=files.path().filename();
+//            toAnal.push_back((analObj){files.path(),outPath});
+//        }
+//    }
+//    cout<<"Found "<<toAnal.size()<<" files for analysis."<<endl;
+//
+//    double dftWindow=0.01533898305;
+//    runJobsBatch(toAnal, 8, -230, 0, 10000, 1, 1, dftWindow, dftWindow/4, 1.0, 0.1, 225, 225);
 }
 

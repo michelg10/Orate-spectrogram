@@ -25,7 +25,7 @@ inline ll next2Pow(ll x) {
 }
 
 struct analObj {
-    fs::path fpth,emo;
+    fs::path inPath,outPath;
 };
 
 #endif /* utils_h */
