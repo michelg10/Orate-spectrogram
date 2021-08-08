@@ -38,35 +38,57 @@ public:
         char verify[4]; //will hold RIFF, WAVE, and fmt to verify that this is indeed a wave file.
         in.read(verify,4);
         
-        if (strncmp(verify,"RIFF",4)) {cerr<<"File format error! (RIFF)"<<endl;return;}
+        if (strncmp(verify,"RIFF",4)) {
+            cerr<<"File format error! (RIFF)"<<endl;
+            in.close();
+            return;
+        }
         int fsize;
         //next up: the size
         in.read((char*)&fsize,4); // evil bit hack lol
         
         //MARK: Verifications
         in.read(verify,4);
-        if (strncmp(verify,"WAVE",4)) {cerr<<"File format error! (VERFWAVE)"<<endl;return;}
-//        for (ll i=0;i<610;i++) {
-//            in.read(verify,1);
-//        }
+        if (strncmp(verify,"WAVE",4)) {
+            cerr<<"File format error! (VERFWAVE)"<<endl;
+            in.close();
+            return;
+        }
+        
         in.read(verify,4);
         
-        if (strncmp(verify,"fmt ",4)) {cerr<<"File format error! (VERFfmt)"<<endl;return;}
+        if (strncmp(verify,"fmt ",4)) {
+            cerr<<"File format error! (VERFfmt)"<<endl;
+            in.close();
+            return;
+        }
         
         int formatChunkSize;
         in.read((char*)&formatChunkSize,4); // evil bit hack lol
-        if (formatChunkSize!=16) {cerr<<"Format not supported :/"<<endl;return;}
+        if (formatChunkSize!=16) {
+            cerr<<"Format not supported :/"<<endl;
+            in.close();
+            return;
+        }
         
         short formatTag,blockAlign,bitspsample; //formatTag: way data is stored, channels: number of channels (1 for mono, 2 for stereo), block alignment: bits/sample/8*channels  bits per sample: 8 bit or 16 bit sound
         int avgbytespsec;
         //number of samples per second and how many bytes per second
         in.read((char*)&formatTag,2);in.read((char*)&channels,2);in.read((char*)&samplerate,4);in.read((char*)&avgbytespsec,4);in.read((char*)&blockAlign,2);in.read((char*)&bitspsample,2);
-        if (channels!=1&&channels!=2) {cerr<<"Channel count not supported :/"<<endl;return;}
+        if (channels!=1&&channels!=2) {
+            cerr<<"Channel count not supported :/"<<endl;
+            in.close();
+            return;
+        }
 //        for (ll i=0;i<4052;i++) {
 //            in.read(verify,1);
 //        }
         in.read(verify,4);
-        if (strncmp(verify,"data",4)) {cerr<<"File format error! (VERFDATA)"<<endl;return;}
+        if (strncmp(verify,"data",4)) {
+            cout<<"File format error! (VERFDATA) Expected data, got "<<verify[0]<<verify[1]<<verify[2]<<verify[3]<<endl;
+            in.close();
+            return;
+        }
         in.read((char*)&datasize,4);
         
         if (bitspsample==8) {
@@ -79,6 +101,7 @@ public:
             in.read((char*)rawData16,datasize);
             datasize=datasize/2;
         }
+        in.close();
         hasData=true;
     }
     void destroy() {
@@ -124,12 +147,13 @@ public:
     }
 };
 
-double const dftWindow=0.01533898305;
-double const frameInc=0.003813559322;
+//double const dftWindow=0.01533898305;
+double const dftWindow=0.017;
+double const frameInc=dftWindow/4.0;
 double const chunkLen=1.0;
 double const strideLen=0.1;
-ll const resizeX=256;
-ll const resizeY=256;
+ll const resizeX=225;
+ll const resizeY=225;
 struct rgb {
     ll r,g,b;
 };
@@ -247,8 +271,8 @@ inline ll next2Pow(ll x) {
     }
     return x+1;
 }
-fs::path analPth="/Users/legitmichel777/Desktop/Orate/Datasets/Retired/sortedRAVDESS";
-fs::path toDir="/Users/legitmichel777/Desktop/Orate/Datasets/superPlan-RAVDESSdd";
+fs::path analPth="/Users/legitmichel777/Developer/Orate/Datasets/emoDB-sorted";
+fs::path toDir="/Users/legitmichel777/Developer/Orate/Datasets/emoDB-gen";
 ll thrs=8;
 ll binL=-230,binR=0;
 ll bins=10000;
@@ -403,12 +427,12 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc,ll *masterBin,double *fram
     delete[] myBin;
     delete[] masterSrc->rawData16;
     delete masterSrc;
-    cout<<job[workerID]<<" execution complete"<<endl;
+//    cout<<job[workerID]<<" execution complete"<<endl;
     job[workerID]=-1;
     //important: deallocate everything
 }
 int main() {
-    ifstream in("/Users/legitmichel777/Desktop/Orate/Code/jet.csv");
+    ifstream in("/Users/legitmichel777/Developer/Orate/Code/Spectrogram Generation/jet.csv");
     for (ll i=0;i<256;i++) {
         char take;
         double tmp;
@@ -442,11 +466,7 @@ int main() {
     for (const fs::directory_entry& files:itr) {
         if (files.path().filename().extension()==".wav") {
             string s=files.path().filename().string();
-            if (s.size()>4) {
-                if (s.substr(0,4)=="conv") {
-                    toAnal.push_back((analObj){files.path(),files.path().parent_path().filename()});
-                }
-            }
+            toAnal.push_back((analObj){files.path(),files.path().parent_path().filename()});
         }
     }
     cout<<"Found "<<toAnal.size()<<" files for analysis."<<endl;
@@ -457,7 +477,7 @@ int main() {
     for (ll i=0;i<thrs;i++) job[i]=-1;
     cout<<"Running Fourier Transform..."<<endl;
     for (ll times=0;times<toAnal.size();times++) {
-        cout<<"Job "<<times<<" "<<toAnal[times].fpth<<endl;
+//        cout<<"Preprocess Job "<<times<<" "<<toAnal[times].fpth<<endl;
         waveAu* daWav=new waveAu(toAnal[times].fpth);
         if (!daWav->hasData) {
             cout<<"Read error at "<<toAnal[times].fpth<<", skipping..."<<endl;
@@ -540,7 +560,7 @@ int main() {
     for (ll i=0;i<thrs;i++) job[i]=-1;
     for (ll times=0;times<toAnal.size();times++) {
 //        if (toAnal[times].fpth.parent_path().filename()!="Malesad   ") continue;
-        cout<<"Job "<<times<<" "<<toAnal[times].fpth<<endl;
+//        cout<<"Output Job "<<times<<" "<<toAnal[times].fpth<<endl;
         waveAu* daWav=new waveAu(toAnal[times].fpth);
         if (!daWav->hasData) {
             cout<<"Read error at "<<toAnal[times].fpth<<", skipping..."<<endl;
@@ -573,11 +593,13 @@ int main() {
     
     for (ll i=0;i<thrs;i++) if (thr[i].joinable()) thr[i].join();
     
-    for (ll i=0;i<thrs;i++) {
-        delete[] frame[i];
-        vDSP_destroy_fftsetup(fourierTransform[i]);
+    if (hasInit) {
+        for (ll i=0;i<thrs;i++) {
+            delete[] frame[i];
+            vDSP_destroy_fftsetup(fourierTransform[i]);
+        }
+        delete[] hammingWindow;
     }
-    delete[] hammingWindow;
     
     delete[] daBins;
     delete[] job;
