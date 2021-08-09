@@ -305,7 +305,6 @@ bool runJobsBatch(vector<analObj> toAnal, ll thrs, ll binL, ll binR, ll bins, do
             continue;
         }
         daWav->toMono();
-        daWav->bitrate48t16();
         
         //find one
         ll freeWorker=-1;
@@ -424,7 +423,7 @@ int main() {
     
     // for real jobs
     
-    {
+    if (false) {
         cout<<"IEMOCAP Task"<<endl;
         //IEMOCAP
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/sorted_IEMOCAP2");
@@ -460,7 +459,7 @@ int main() {
         }
     }
     
-    {
+    if (false) {
         cout<<"CREMA-D Task"<<endl;
         // CREMA-D
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/CREMA-D sorted2");
@@ -536,7 +535,7 @@ int main() {
         }
     }
     
-    {
+    if (false) {
         cout<<"SAVEE Task"<<endl;
         // SAVEE
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/SAVEE");
@@ -579,7 +578,7 @@ int main() {
         }
     }
     
-    {
+    if (false) {
         cout<<"RAVDESS Task"<<endl;
         // RAVDESS
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/sortedRAVDESS");
@@ -624,7 +623,7 @@ int main() {
         }
     }
     
-    {
+    if (false) {
         cout<<"TESS Task"<<endl;
         // TESS
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/TESS");
