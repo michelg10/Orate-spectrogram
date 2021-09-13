@@ -36,7 +36,12 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
         wavSrc.rawData16=&masterSrc->rawData16[startSample];
         wavSrc.hasData=true;
         
+        // START SNIPPET
         vector<double*>spectr;
+        float *input=new float[interpolationSample];
+        COMPLEX_SPLIT A;
+        A.realp=new float[interpolationSample/2];
+        A.imagp=new float[interpolationSample/2];
         for (ll i=dftWindowSample/2;1;i+=frameIncSample) { //if dftWindowSample is odd then take the lower bound!
             double *coefs=new double[coefsNum];
             ll leftEdg=i-dftWindowSample/2;
@@ -64,13 +69,8 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
             }
             for (ll j=dftWindowSample;j<interpolationSample;j++) frame[j]=0;
             //execute fourier transform
-                    
-            float *input=new float[interpolationSample];
-            float *output=new float[interpolationSample];
+            
             for (ll i=0;i<interpolationSample;i++) input[i]=frame[i];
-            COMPLEX_SPLIT A;
-            A.realp=new float[interpolationSample/2];
-            A.imagp=new float[interpolationSample/2];
             
             vDSP_ctoz((COMPLEX*)input,2,&A,1,interpolationSample/2);
             vDSP_fft_zrip(fftSetup,&A,1,log2n,FFT_FORWARD);
@@ -86,11 +86,12 @@ void processAud(ll workerID,ll *job,waveAu* masterSrc, ll *totBinned, ll *master
             }
             spectr.push_back(coefs);
             
-            delete[] input;
-            delete[] output;
-            delete[] A.realp;
-            delete[] A.imagp;
         }
+        delete[] input;
+        delete[] A.realp;
+        delete[] A.imagp;
+        
+        // END SNIPPET
         
         double **src=new double*[spectr.size()];
         for (ll i=0;i<spectr.size();i++) src[i]=spectr[i];
@@ -423,12 +424,12 @@ int main() {
     
     // for real jobs
     
-    if (false) {
+    {
         cout<<"IEMOCAP Task"<<endl;
         //IEMOCAP
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/sorted_IEMOCAP2");
         
-        fs::path toDir="/Volumes/Temporary F/IEMOCAP-gen-common4only";
+        fs::path toDir="/Volumes/Audible F/IEMOCAP-gen-common4only";
         if (fs::exists(toDir)) {
             fs::remove_all(toDir);
         }
@@ -455,16 +456,16 @@ int main() {
         for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
         for (ll i=0;i<3;i++) {
             cout<<"Batch "<<i<<endl;
-            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.5, 0.2, 225, 225);
         }
     }
     
-    if (false) {
+    {
         cout<<"CREMA-D Task"<<endl;
         // CREMA-D
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/CREMA-D sorted2");
         
-        fs::path toDir="/Volumes/Temporary F/CREMAD-gen-common4only";
+        fs::path toDir="/Volumes/Audible F/CREMAD-gen-common4only";
         if (fs::exists(toDir)) {
             fs::remove_all(toDir);
         }
@@ -493,7 +494,7 @@ int main() {
         for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
         for (ll i=0;i<3;i++) {
             cout<<"Batch "<<i<<endl;
-            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.5, 0.2, 225, 225);
         }
     }
     
@@ -502,7 +503,7 @@ int main() {
         // emoDB
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/emoDB-sorted");
         
-        fs::path toDir="/Volumes/Temporary F/emoDB-gen-common4only";
+        fs::path toDir="/Volumes/Audible F/emoDB-gen-common4only";
         if (fs::exists(toDir)) {
             fs::remove_all(toDir);
         }
@@ -531,16 +532,16 @@ int main() {
         for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
         for (ll i=0;i<3;i++) {
             cout<<"Batch "<<i<<endl;
-            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.5, 0.2, 225, 225);
         }
     }
     
-    if (false) {
+    {
         cout<<"SAVEE Task"<<endl;
         // SAVEE
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/SAVEE");
         
-        fs::path toDir="/Volumes/Temporary F/SAVEE-gen-common4only";
+        fs::path toDir="/Volumes/Audible F/SAVEE-gen-common4only";
         if (fs::exists(toDir)) {
             fs::remove_all(toDir);
         }
@@ -574,16 +575,16 @@ int main() {
         for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
         for (ll i=0;i<3;i++) {
             cout<<"Batch "<<i<<endl;
-            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.5, 0.2, 225, 225);
         }
     }
     
-    if (false) {
+    {
         cout<<"RAVDESS Task"<<endl;
         // RAVDESS
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/sortedRAVDESS");
         
-        fs::path toDir="/Volumes/Temporary F/RAVDESS-gen-common4only";
+        fs::path toDir="/Volumes/Audible F/RAVDESS-gen-common4only";
         if (fs::exists(toDir)) {
             fs::remove_all(toDir);
         }
@@ -619,16 +620,16 @@ int main() {
         unsigned seed=std::chrono::system_clock::now().time_since_epoch().count();
         for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
         for (ll i=0;i<3;i++) {
-            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.5, 0.2, 225, 225);
         }
     }
     
-    if (false) {
+    {
         cout<<"TESS Task"<<endl;
         // TESS
         fs::recursive_directory_iterator itr("/Users/legitmichel777/Developer/Orate/Datasets/Retired/TESS");
         
-        fs::path toDir="/Volumes/Temporary F/TESS-gen-common4only";
+        fs::path toDir="/Volumes/Audible F/TESS-gen-common4only";
         if (fs::exists(toDir)) {
             fs::remove_all(toDir);
         }
@@ -662,7 +663,7 @@ int main() {
         for (ll i=0;i<3;i++) shuffle(toAnal[i].begin(), toAnal[i].end(), std::default_random_engine(seed));
         for (ll i=0;i<3;i++) {
             cout<<"Batch "<<i<<endl;
-            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.0, 0.1, 225, 225);
+            runJobsBatch(toAnal[i], 8, -230, 0, 10000, 1, 1, dftWindows[i], dftWindows[i]/4, 1.5, 0.2, 225, 225);
         }
     }
 }
